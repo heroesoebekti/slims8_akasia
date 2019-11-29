@@ -23,6 +23,8 @@ if (INDEX_AUTH != 1) {
     die("can not access this file directly");
 }
 
+
+
 class biblio_indexer
 {
 	public $total_records = 0;
@@ -34,10 +36,10 @@ class biblio_indexer
 	private $obj_db = false;
 	private $verbose = false;
 	private $max_indexed = 1000000;
-	private $index_type = 'search_biblio';
 
 	public function __construct($obj_db, $bool_verbose = false) {
 	    global $sysconf;
+      global $esClient;
 	    if ($sysconf['index']['type'] == 'mongodb') {
 	    if (!class_exists('MongoClient')) {
 	      throw new Exception('PHP Mongodb extension library is not installed yet!');
@@ -48,6 +50,12 @@ class biblio_indexer
 	    	$this->biblio = $Mongo->slims->biblio;
 	      }
 	    }
+
+      elseif($sysconf['index']['type'] == 'elastic_search'){
+        $this->es = $esClient;
+        $this->index_type = 'biblio_search';
+      }
+
 	    $this->obj_db = $obj_db;
 	    $this->verbose = $bool_verbose;
 	}
@@ -68,16 +76,23 @@ class biblio_indexer
 	  $r = 0;
 	  if ($rec_bib->num_rows > 0) {
             // start time counter
+             $start = microtime(true);
             $_start = function_exists('microtime')?microtime(true):time();
             $this->total_records = $rec_bib->num_rows;
             // loop records and create index
+            $_total = 0;
+            $_indexed = 0;
             while ($rb_id = $rec_bib->fetch_row()) {
               $biblio_id = $rb_id[0];
               $index = $this->makeIndex($biblio_id);
+              $_indexed++;sleep(0.2);
+              if($index){ $_total++;}
             }
             // get end time
             $_end = function_exists('microtime')?microtime(true):time();
             $this->indexing_time = $_end-$_start;
+            $this->indexed = $_indexed;
+            $this->total_records = $_total;
 	  }
 	}
 
@@ -87,12 +102,19 @@ class biblio_indexer
 	 * @return	boolean		true on success, false otherwise
 	 */
 	public function emptyingIndex() {
+    global $sysconf;
+        if($sysconf['index']['type'] =='elastic_search'){
+            $this->es->truncate();
+            return true;
+          }
+        else{    
           @$this->obj_db->query('TRUNCATE TABLE `search_biblio`');
           if ($this->obj_db->errno) {
             $this->errors[] = $this->obj_db->error;
             return false;
           }
-          return true;
+        }
+     return true;
 	}
 
 
@@ -102,6 +124,7 @@ class biblio_indexer
 	 * @return	boolean	false on Failed, true otherwise
 	 */
 	public function makeIndex($int_biblio_id) {
+
           $bib_sql = 'SELECT b.biblio_id, b.title, b.edition, b.publish_year, b.notes, b.series_title, b.classification, b.spec_detail_info,
             g.gmd_name AS `gmd`, pb.publisher_name AS `publisher`, pl.place_name AS `publish_place`, b.isbn_issn,
             lg.language_name AS `language`, b.call_number, b.opac_hide, b.promoted, b.labels, b.`collation`, b.image,
@@ -168,7 +191,7 @@ class biblio_indexer
           	WHERE ba.biblio_id ='. $int_biblio_id;
           $au_id = $this->obj_db->query($au_sql);
           while($rs_au = $au_id->fetch_assoc()) {
-          	$au_all .= $rs_au['name'] . ' - ';
+            $au_all .= ''.$rs_au['name'] . ' - ';
           }
           if ($au_all !='') {
           	$au_all = substr_replace($au_all, '', -3);
@@ -182,7 +205,8 @@ class biblio_indexer
           	WHERE bt.biblio_id ='. $int_biblio_id;
           $topic_id = $this->obj_db->query($topic_sql);
           while ($rs_topic = $topic_id->fetch_assoc()) {
-          	$topic_all .= $rs_topic['topic'] . ' - ';
+            //$rs_topic['topic'] = str_replace(" ", "_", $rs_topic['topic']);
+          	$topic_all .= trim($rs_topic['topic']) . ' - ';
           }
           if ($topic_all != '') {
           	$topic_all = substr_replace($topic_all, '', -3);
@@ -235,25 +259,41 @@ class biblio_indexer
           	$data['collection_types'] = $this->obj_db->escape_string($colltype_all);
           }
 
-          if ($this->index_type == 'nosql') {
+    if ($this->index_type == 'nosql') {
             $this->biblio->insert($data);
-	    // create index
-	    $this->biblio->ensureIndex(array('title' => 1, 'author' => 1, 'topic' => 1));
-	    if ($this->verbose) { echo " indexed\n"; }
-	    $this->indexed++;
-	  } else {
+      	    // create index
+      	    $this->biblio->ensureIndex(array('title' => 1, 'author' => 1, 'topic' => 1));
+      	    if ($this->verbose) { echo " indexed\n"; }
+      	    $this->indexed++;
+	  } 
+
+    elseif ($this->es){
+
+          for($i = 0; $i < 1; $i++) {
+              $_biblio = api::biblio_load($this->obj_db,$int_biblio_id);
+              $a = $this->es->add('biblio_search', $int_biblio_id, $_biblio[0]);
+              echo 'indexing biblio_id '.$_biblio[0]['biblio_id'].' status : '.($a['created']?'success':'failed').' ..'."\n";
+              if($int_biblio_id % 50 == 0){
+                sleep(1);
+                echo 'please wait ..'."\n";
+              }
+          }
+         }
+    else {
 	    /*  SQL operation object  */
-	    $sql_op = new simbio_dbop($this->obj_db);
-	    /*  Insert all variable  */
-	    if ($sql_op->insert('search_biblio', $data)) {
-	    	if ($this->verbose) { echo " indexed\n"; }
-	    	$this->indexed++;
-	    } else {
-	    	if ($this->verbose) { echo " FAILED! (Error: '.$sql_op->error.')\n"; }
-	    	$this->failed[] = $int_biblio_id;
-	    	// line below is for debugging purpose only
-	    	// echo '<div>'.$sql_op->error.'</div>';
-	    }
+  	    $sql_op = new simbio_dbop($this->obj_db);
+  	    /*  Insert all variable  */
+  	    if ($sql_op->insert('search_biblio', $data)) {
+
+  	    	if ($this->verbose) { echo " indexed\n"; }
+  	    	$this->indexed++;
+  	    } else {
+  	    	if ($this->verbose) { echo " FAILED! (Error: '.$sql_op->error.')\n"; }
+  	    	$this->failed[] = $int_biblio_id;
+  	    	// line below is for debugging purpose only
+  	    	 echo '<div>'.$sql_op->error.'</div>';
+  	    }
+
 	  }
 
 	  return true;
@@ -285,4 +325,19 @@ class biblio_indexer
 	    $this->indexing_time = $_end-$_start;
 	  }
 	}
+ 
+ public function countIndex() {
+
+ if(isset($this->es->count('biblio_search')->count))
+  {
+    return $this->es->count('biblio_search')->count;
+
+  }else{
+
+    return 0;
+
+  }
+
+ }
+
 }

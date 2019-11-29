@@ -22,7 +22,8 @@
 /* Biblio Index Command Line Updater */
 
 // main system configuration
-require 'sysconfig.inc.php';
+define('INDEX_AUTH',1);
+require '../../../sysconfig.inc.php';
 require SIMBIO.'simbio_DB/simbio_dbop.inc.php';
 require MDLBS.'system/biblio_indexer.inc.php';
 
@@ -86,7 +87,7 @@ if ($argv[1] == 'reindex') {
 	$bib_sql = 'SELECT COUNT(*) FROM search_biblio';
 	$rec_bib_q = $dbs->query($bib_sql);
 	$rec_bib_d = $rec_bib_q->fetch_row();
-	if ($rec_bib_d[0] > 0) {
+	if ($rec_bib_d[0] > 0 && $sysconf['index']['type'] != 'elastic_search') {
 		$message = 'Please empty the Index first before re-creating the Index';
 		echo $message."\n";
         exit(6);

@@ -283,6 +283,9 @@ if (isset($_POST['saveData']) AND $can_read AND $can_write) {
         // update index
         // delete from index first
         $sql_op->delete('search_biblio', "biblio_id=$updateRecordID");
+        if($sysconf['index']['type'] == 'elastic_search'){
+          $esClient->delete('biblio_search', $updateRecordID); 
+        }
         $indexer->makeIndex($updateRecordID);
       } else { utility::jsAlert(__('Bibliography Data FAILED to Updated. Please Contact System Administrator')."\n".$sql_op->error); }
     } else {
@@ -421,12 +424,13 @@ if (isset($_POST['saveData']) AND $can_read AND $can_write) {
     $biblio_item_q = $dbs->query($_sql_biblio_item_q);
     $biblio_item_d = $biblio_item_q->fetch_row();
     if ($biblio_item_d[1] < 1) {
-
+        if($sysconf['index']['type'] == 'elastic_search'){
+          $esClient->delete('biblio_search', $itemID);
+        }
         if ($sysconf['log']['biblio']) {
           $_rawdata = api::biblio_load($dbs, $itemID);
           api::bibliolog_write($dbs, $itemID, $_SESSION['uid'], $_SESSION['realname'], $biblio_item_d[0], 'delete', 'description', $_rawdata, 'Data bibliografi dihapus.');
         }
-
 
       if (!$sql_op->delete('biblio', "biblio_id=$itemID")) {
         $error_num++;
@@ -447,10 +451,12 @@ if (isset($_POST['saveData']) AND $can_read AND $can_write) {
           LEFT JOIN kardex AS k ON s.serial_id=k.serial_id
           WHERE b.biblio_id=%d GROUP BY title', $itemID);
         $serial_kardex_q = $dbs->query($_sql_serial_kardex_q);
-        $serial_kardex_d = $serial_kardex_q->fetch_row();
-        // delete kardex
-        if ($serial_kardex_d[1] > 1) {
-          $sql_op->delete('kardex', "serial_id=".$serial_kardex_d[2]);
+        if ($serial_kardex_q) {
+          $serial_kardex_d = $serial_kardex_q->fetch_row();
+          // delete kardex
+          if ($serial_kardex_d[1] > 1) {
+            $sql_op->delete('kardex', "serial_id=".$serial_kardex_d[2]);
+          }
         }
         //delete serial data
           $sql_op->delete('serial', "biblio_id=$itemID");

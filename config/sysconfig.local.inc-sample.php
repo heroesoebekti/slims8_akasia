@@ -40,6 +40,42 @@ define('DB_PASSWORD', '_DB_PASSWORD_');
 $sysconf['index']['type'] = 'index';
 
 /**
+ * ELASTIC SEARCH INDEXING
+ */
+$sysconf['index']['type'] = 'elastic_search';
+$sysconf['index']['elasticsearch'] = array(
+  'host'=>DB_HOST,
+  'port'=>9200, 
+  'index'=>DB_NAME
+  );
+
+if($sysconf['index']['type'] == 'elastic_search')
+{
+  include LIB.'elasticsearch/elasticsearch.php';
+  $esClient = @new esClient($sysconf['index']['elasticsearch']['host'],$sysconf['index']['elasticsearch']['port'],$sysconf['index']['elasticsearch']['index']);
+
+  // clustering constant
+  $sysconf['enable_search_clustering'] = true;
+  $sysconf['es']['cluster']['size'] = 10;
+
+  //cluster available
+  $sysconf['es']['cluster']['field']['author'] = 1;
+  $sysconf['es']['cluster']['field']['gmd'] = 1;
+  $sysconf['es']['cluster']['field']['subject'] = 1;
+  $sysconf['es']['cluster']['field']['publisher_name'] = 0;
+  $sysconf['es']['cluster']['field']['publishing_place'] = 1;    
+  $sysconf['es']['cluster']['field']['publishing_year'] = 1;
+  $sysconf['es']['cluster']['field']['language'] = 0;
+  $sysconf['es']['cluster']['field']['location'] = 1;
+  $sysconf['es']['cluster']['field']['collection_type'] = 0;
+
+  // set default index if es not ready
+  if(isset($esClient->error)){
+    $sysconf['index']['type'] = 'default';
+  }
+}
+
+/**
  * UCS settings
  */
 $sysconf['ucs']['enable'] = false;

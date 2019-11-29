@@ -20,6 +20,11 @@
 
 // Check if search clustering enabled
 if (!$sysconf['enable_search_clustering']) { exit(); }
+
+// run es clustering
+if ($sysconf['index']['type'] == 'elastic_search' && file_exists(LIB.'elasticsearch/elasticsearch.php')) {
+  require LIB.'clustering_es.inc.php';
+}
 // only run on "index" type index
 if ($sysconf['index']['type'] != 'index') { exit(); }
 

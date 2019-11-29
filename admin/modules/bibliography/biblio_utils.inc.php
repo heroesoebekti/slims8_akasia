@@ -101,6 +101,7 @@ function showTitleAuthors($obj_db, $array_data)
 {
   global $sysconf;
   global $label_cache;
+  global $esClient;
   $_opac_hide = false;
   $_promoted = false;
   $_labels = '';
@@ -121,6 +122,13 @@ function showTitleAuthors($obj_db, $array_data)
       }
       $_authors = substr_replace($_authors, '', -3);
       $_output = '<div style="float: left;"><span class="title">'.$_title.'</span><div class="authors">'.$_authors.'</div></div>';
+  } 
+  elseif($sysconf['index']['type'] == 'elastic_search'){
+    $_d = $esClient->get('biblio_search',$array_data[0]);
+    $_title = $_d['_source']['title'] ?? '';
+    $_author = $_d['_source']['author'] ?? '';
+    $_labels = $_d['_source']['label'] ?? '';
+    $_output = '<div style="float: left;"><span class="title">'.$_title.'</span><div class="authors">'.$_author.'</div></div>';
   } else {
       $_output = '<div style="float: left;"><span class="title">'.$array_data[1].'</span><div class="authors">'.$array_data[3].'</div></div>';
       $_labels = $array_data[2];

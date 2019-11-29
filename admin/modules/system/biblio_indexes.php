@@ -94,7 +94,7 @@ if (isset($_POST['detail']) OR (isset($_GET['action']) AND $_GET['action'] == 'd
     $bib_sql = 'SELECT COUNT(*) FROM search_biblio';
     $rec_bib_q = $dbs->query($bib_sql);
     $rec_bib_d = $rec_bib_q->fetch_row();
-    if ($rec_bib_d[0] > 0) {
+    if ($rec_bib_d[0] > 0 && $sysconf['index']['type'] != 'elastic_search') {
     	$message = __('Please empty the Index first before re-creating the Index');
     	echo '<div class="errorBox">'.$message.'</div>'."\n";
     } else {
@@ -131,14 +131,22 @@ if (isset($_POST['detail']) OR (isset($_GET['action']) AND $_GET['action'] == 'd
 </div>
 </fieldset>
 <?php
+
+echo '<div class="infoBox"><div class="alert alert-info">Indexing mode : <b>'.ucwords(str_replace('_', ' ', $sysconf['index']['type'])).'</b></div></div>'."\n";
 echo '<div class="infoBox">'."\n";
 // Index info
+
 $rec_bib_q = $dbs->query('SELECT COUNT(*) FROM biblio');
 $rec_bib_d = $rec_bib_q->fetch_row();
 $bib_total = $rec_bib_d[0];
 if ($sysconf['index']['type'] == 'mongodb' && isset($biblio)) {
   $idx_total = $biblio->count();
-} else {
+} 
+elseif($sysconf['index']['type'] == 'elastic_search'){
+    $indexer = new biblio_indexer($dbs);
+    $idx_total = $indexer->countIndex();
+}
+else {
   $idx_bib_q = $dbs->query('SELECT COUNT(*) FROM search_biblio');
   $idx_bib_d = $idx_bib_q->fetch_row();
   $idx_total = $idx_bib_d[0];
@@ -149,8 +157,12 @@ if (isset($_SESSION['message'])) {
   echo '<div class="alert alert-info">'.$_SESSION['message'].'</div>';
   unset($_SESSION['message']);
 }
+if(isset($esClient->error)){
+  echo '<b>'.$esClient->error.'</b>';
+}
 echo '<div>Total data on biblio: ' . $bib_total . ' records.</div>';
 echo '<div>Total indexed data: ' . $idx_total . ' records.</div>';
 echo '<div>Unidexed data: ' . $unidx_total . ' records.</div>';
 echo '</div>';
 }
+

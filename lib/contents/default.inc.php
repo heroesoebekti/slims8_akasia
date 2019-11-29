@@ -40,7 +40,9 @@ if ($sysconf['index']['type'] == 'index') {
   require LIB.'sphinx/sphinxapi.php';
   require LIB.'biblio_list_sphinx.inc.php';
   $sysconf['opac_result_num'] = (int)$sysconf['opac_result_num'];
-} else {
+} else if ($sysconf['index']['type'] == 'elastic_search' && file_exists(LIB.'elasticsearch/elasticsearch.php')) {
+  require LIB.'biblio_list_es.inc.php';
+  }else {
   require LIB.'biblio_list.inc.php';
 }
 
@@ -252,6 +254,21 @@ if (isset($_GET['search']) && !empty($_GET['search'])) {
       $search_result_info .= '</a>?</div>';
       enchant_broker_free_dict($dict);
     }
+    
+    if($sysconf['index']['type'] == 'elastic_search'){
+      $suggest = array('suggest' => array('text' => $keywords, 'term' => array('field' =>'title','field'=>'authors.author_name','field'=>'subjects.topic')));
+      $a = $esClient->suggest($suggest);
+      if(isset($a['suggest'][0]['options']) && count($a['suggest'][0]['options']) > 0){
+          $search_result_info .= '<div class="search-suggestions">'.__('Did you mean:').' ';
+          foreach ($a['suggest'][0]['options'] as $key => $value) {
+            $search_result_info .= '<a class="search-suggestion-link" href="./index.php?keywords='.urlencode($value['text']).'&search=Search">';
+            $search_result_info .= $value['text'].' ';
+            $search_result_info .= '</a>';
+          }
+          $search_result_info .= '</div>';
+      }
+    }
+
   }
 
   if (isset($biblio_list) && isset($sysconf['enable_xml_result']) && $sysconf['enable_xml_result']) {
