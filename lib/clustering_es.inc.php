@@ -43,7 +43,8 @@ if($sysconf['index']['type'] != 'elastic_search') {
             }
             echo '</ul>';
           }
-      }   
+      }  
+    unset($_SESSION['aggs']);   
     }   
   }
 
